@@ -62,6 +62,7 @@ export const sendVerificationEmail = action({
     );
     const verifyLink = `${siteUrl}?verify=${encodeURIComponent(token)}`;
 
+    const fromEmail = process.env.RESEND_FROM || "onboarding@resend.dev";
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -69,7 +70,7 @@ export const sendVerificationEmail = action({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Shirt Platform <no-reply@shirt.jrbussard.com>",
+        from: `Shirt Platform <${fromEmail}>`,
         to: [email],
         subject: "Verify your email",
         html: `<p>Welcome! Please verify your email by clicking the link below:</p><p><a href="${verifyLink}">Verify Email</a></p><p>If the link doesn't work, copy and paste this URL into your browser:<br/>${verifyLink}</p>`,
