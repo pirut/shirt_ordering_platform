@@ -1,0 +1,176 @@
+import { v } from "convex/values";
+import { query, mutation } from "./_generated/server";
+import { getAuthUserId } from "@convex-dev/auth/server";
+
+export const createShirtType = mutation({
+  args: {
+    companyId: v.id("companies"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    basePrice: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if user is admin
+    const membership = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company_and_user", (q) => 
+        q.eq("companyId", args.companyId).eq("userId", userId)
+      )
+      .first();
+
+    if (!membership || membership.role !== "admin") {
+      throw new Error("Not authorized");
+    }
+
+    return await ctx.db.insert("shirtTypes", {
+      companyId: args.companyId,
+      name: args.name,
+      description: args.description || "",
+      category: "Standard",
+      basePrice: args.basePrice,
+      images: [],
+      isActive: true,
+      allowPersonalization: false,
+    });
+  },
+});
+
+export const createShirtVariant = mutation({
+  args: {
+    shirtTypeId: v.id("shirtTypes"),
+    sleeveLength: v.union(v.literal("short"), v.literal("long"), v.literal("sleeveless")),
+    color: v.string(),
+    availableSizes: v.array(v.union(
+      v.literal("XS"), v.literal("S"), v.literal("M"), 
+      v.literal("L"), v.literal("XL"), v.literal("XXL")
+    )),
+    priceModifier: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const shirtType = await ctx.db.get(args.shirtTypeId);
+    if (!shirtType) {
+      throw new Error("Shirt type not found");
+    }
+
+    // Check if user is admin
+    const membership = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company_and_user", (q) => 
+        q.eq("companyId", shirtType.companyId).eq("userId", userId)
+      )
+      .first();
+
+    if (!membership || membership.role !== "admin") {
+      throw new Error("Not authorized");
+    }
+
+    return await ctx.db.insert("shirtVariants", {
+      shirtTypeId: args.shirtTypeId,
+      sleeveLength: args.sleeveLength,
+      color: args.color,
+      colorHex: "#000000",
+      material: "Cotton",
+      availableSizes: args.availableSizes,
+      priceModifier: args.priceModifier,
+      images: [],
+      isActive: true,
+    });
+  },
+});
+
+export const getCompanyShirts = query({
+  args: {
+    companyId: v.id("companies"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if user is member of company
+    const membership = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company_and_user", (q) => 
+        q.eq("companyId", args.companyId).eq("userId", userId)
+      )
+      .first();
+
+    if (!membership) {
+      throw new Error("Not authorized");
+    }
+
+    const shirtTypes = await ctx.db
+      .query("shirtTypes")
+      .withIndex("by_company", (q) => q.eq("companyId", args.companyId))
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect();
+
+    const shirtsWithVariants = await Promise.all(
+      shirtTypes.map(async (shirtType) => {
+        const variants = await ctx.db
+          .query("shirtVariants")
+          .withIndex("by_shirt_type", (q) => q.eq("shirtTypeId", shirtType._id))
+          .collect();
+        
+        return {
+          ...shirtType,
+          variants,
+        };
+      })
+    );
+
+    return shirtsWithVariants;
+  },
+});
+
+export const updateShirtType = mutation({
+  args: {
+    shirtTypeId: v.id("shirtTypes"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    basePrice: v.optional(v.number()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const shirtType = await ctx.db.get(args.shirtTypeId);
+    if (!shirtType) {
+      throw new Error("Shirt type not found");
+    }
+
+    // Check if user is admin
+    const membership = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company_and_user", (q) => 
+        q.eq("companyId", shirtType.companyId).eq("userId", userId)
+      )
+      .first();
+
+    if (!membership || membership.role !== "admin") {
+      throw new Error("Not authorized");
+    }
+
+    const updates: any = {};
+    if (args.name !== undefined) updates.name = args.name;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.basePrice !== undefined) updates.basePrice = args.basePrice;
+    if (args.isActive !== undefined) updates.isActive = args.isActive;
+
+    await ctx.db.patch(args.shirtTypeId, updates);
+  },
+});
