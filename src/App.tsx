@@ -1,5 +1,7 @@
-import { Authenticated, Unauthenticated, useQuery } from "convex/react";
+import { Authenticated, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { SignInForm } from "./SignInForm";
 import { SignOutButton } from "./SignOutButton";
 import { Toaster } from "sonner";
@@ -7,6 +9,24 @@ import { Dashboard } from "./components/Dashboard";
 import { CompanySetup } from "./components/CompanySetup";
 
 export default function App() {
+  const verify = useMutation(api.verification.verifyToken);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("verify");
+    if (token) {
+      verify({ token })
+        .then(() => toast.success("Email verified!"))
+        .catch((e) => {
+          console.error(e);
+          toast.error("Verification link invalid or expired.");
+        })
+        .finally(() => {
+          params.delete("verify");
+          const url = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+          window.history.replaceState({}, "", url);
+        });
+    }
+  }, [verify]);
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm h-16 flex justify-between items-center border-b shadow-sm px-4">

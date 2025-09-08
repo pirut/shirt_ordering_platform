@@ -333,4 +333,11 @@ const applicationTables = {
 export default defineSchema({
   ...authTables,
   ...applicationTables,
+  // Email verification tokens
+  emailVerificationTokens: defineTable({
+    userId: v.id("users"),
+    token: v.string(),
+    expiresAt: v.number(),
+    used: v.boolean(),
+  }).index("by_token", ["token"]).index("by_user", ["userId"]),
 });

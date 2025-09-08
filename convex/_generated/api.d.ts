@@ -28,6 +28,7 @@ import type * as shirts from "../shirts.js";
 import type * as util_audit from "../util/audit.js";
 import type * as util_rbac from "../util/rbac.js";
 import type * as vendors from "../vendors.js";
+import type * as verification from "../verification.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   "util/audit": typeof util_audit;
   "util/rbac": typeof util_rbac;
   vendors: typeof vendors;
+  verification: typeof verification;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,
