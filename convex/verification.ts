@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 function generateToken(len = 48) {
@@ -46,7 +46,7 @@ export const verifyToken = mutation({
 export const sendVerificationEmail = action({
   args: {},
   handler: async (ctx) => {
-    const user = await ctx.runQuery(internal.auth.loggedInUser, {});
+    const user = await ctx.runQuery(api.auth.loggedInUser, {});
     if (!user) throw new Error("Not authenticated");
     const email: string | undefined = (user as any).email;
     if (!email) throw new Error("User missing email");
@@ -57,7 +57,7 @@ export const sendVerificationEmail = action({
     if (!apiKey) throw new Error("RESEND_API_KEY not configured");
 
     const { token } = await ctx.runMutation(
-      internal.verification.createVerificationToken,
+      api.verification.createVerificationToken,
       {},
     );
     const verifyLink = `${siteUrl}?verify=${encodeURIComponent(token)}`;
