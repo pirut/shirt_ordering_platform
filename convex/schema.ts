@@ -25,7 +25,7 @@ const applicationTables = {
   companyMembers: defineTable({
     companyId: v.id("companies"),
     userId: v.id("users"),
-    role: v.union(v.literal("admin"), v.literal("employee"), v.literal("manager")),
+    role: v.union(v.literal("companyAdmin"), v.literal("employee")),
     orderLimit: v.number(),
     department: v.optional(v.string()),
     joinedAt: v.number(),
@@ -40,13 +40,23 @@ const applicationTables = {
   invitations: defineTable({
     companyId: v.id("companies"),
     email: v.string(),
-    role: v.union(v.literal("admin"), v.literal("employee"), v.literal("manager")),
+    role: v.union(v.literal("companyAdmin"), v.literal("employee")),
     orderLimit: v.number(),
     department: v.optional(v.string()),
     token: v.string(),
     expiresAt: v.number(),
     isUsed: v.boolean(),
   }).index("by_token", ["token"]),
+
+  // Vendor members: associates Convex users to a vendor record
+  vendorMembers: defineTable({
+    vendorId: v.id("vendors"),
+    userId: v.id("users"),
+    createdAt: v.number(),
+    isActive: v.boolean(),
+  })
+    .index("by_vendor", ["vendorId"])
+    .index("by_user", ["userId"]),
 
   // Shirt Types
   shirtTypes: defineTable({

@@ -23,7 +23,10 @@ import type * as orders from "../orders.js";
 import type * as purchaseOrders from "../purchaseOrders.js";
 import type * as reports from "../reports.js";
 import type * as router from "../router.js";
+import type * as seed from "../seed.js";
 import type * as shirts from "../shirts.js";
+import type * as util_audit from "../util/audit.js";
+import type * as util_rbac from "../util/rbac.js";
 import type * as vendors from "../vendors.js";
 
 /**
@@ -45,7 +48,10 @@ declare const fullApi: ApiFromModules<{
   purchaseOrders: typeof purchaseOrders;
   reports: typeof reports;
   router: typeof router;
+  seed: typeof seed;
   shirts: typeof shirts;
+  "util/audit": typeof util_audit;
+  "util/rbac": typeof util_rbac;
   vendors: typeof vendors;
 }>;
 export declare const api: FilterApi<

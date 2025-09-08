@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { getCurrentVendorMembership, ensureCompanyAdmin } from "./util/rbac";
 
 export const createPOForOrder = internalMutation({
   args: {
@@ -71,24 +72,10 @@ export const createPOForOrder = internalMutation({
 export const getVendorPOs = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      return [];
-    }
-
-    const user = await ctx.db.get(userId);
-    if (!user?.email) {
-      return [];
-    }
-
-    const vendor = await ctx.db
-      .query("vendors")
-      .withIndex("by_email", (q) => q.eq("email", user.email!))
-      .first();
-
-    if (!vendor) {
-      return [];
-    }
+    const vm = await getCurrentVendorMembership(ctx);
+    if (!vm) return [];
+    const vendor = await ctx.db.get(vm.vendorId);
+    if (!vendor) return [];
 
     const pos = await ctx.db
       .query("purchaseOrders")
@@ -124,22 +111,12 @@ export const updatePOItemStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
-
     const po = await ctx.db.get(args.poId);
     if (!po) {
       throw new Error("Purchase order not found");
     }
-
-    const user = await ctx.db.get(userId);
-    const vendor = await ctx.db.get(po.vendorId);
-
-    if (!user?.email || !vendor || user.email !== vendor.email) {
-      throw new Error("Not authorized");
-    }
+    const vm = await getCurrentVendorMembership(ctx);
+    if (!vm || String(vm.vendorId) !== String(po.vendorId)) throw new Error("Not authorized");
 
     const updatedItems = [...po.items];
     if (args.itemIndex >= 0 && args.itemIndex < updatedItems.length) {
@@ -165,22 +142,7 @@ export const getCompanyPOs = query({
     companyId: v.id("companies"),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
-
-    // Check if user is admin or manager
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || (membership.role !== "admin" && membership.role !== "manager")) {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     const pos = await ctx.db
       .query("purchaseOrders")

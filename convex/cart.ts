@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { logAudit } from "./util/audit";
 
 export const addToCart = mutation({
   args: {
@@ -60,7 +61,7 @@ export const addToCart = mutation({
       return existingItem._id;
     } else {
       // Add new item
-      return await ctx.db.insert("cartItems", {
+      const id = await ctx.db.insert("cartItems", {
         userId,
         companyId: shirtType.companyId,
         shirtTypeId: args.shirtTypeId,
@@ -70,6 +71,14 @@ export const addToCart = mutation({
         personalization: args.personalization,
         addedAt: Date.now(),
       });
+      await logAudit(ctx, {
+        action: "add_to_cart",
+        entityType: "cartItem",
+        entityId: String(id),
+        companyId: String(shirtType.companyId),
+        newValues: { size: args.size, quantity: args.quantity },
+      });
+      return id;
     }
   },
 });
@@ -122,9 +131,23 @@ export const updateCartItem = mutation({
 
     if (args.quantity <= 0) {
       await ctx.db.delete(args.itemId);
+      await logAudit(ctx, {
+        action: "remove_from_cart",
+        entityType: "cartItem",
+        entityId: String(args.itemId),
+        companyId: String(item.companyId),
+      });
     } else {
       await ctx.db.patch(args.itemId, {
         quantity: args.quantity,
+      });
+      await logAudit(ctx, {
+        action: "update_cart_item",
+        entityType: "cartItem",
+        entityId: String(args.itemId),
+        companyId: String(item.companyId),
+        oldValues: { quantity: item.quantity },
+        newValues: { quantity: args.quantity },
       });
     }
   },
@@ -169,5 +192,12 @@ export const clearCart = mutation({
     for (const item of cartItems) {
       await ctx.db.delete(item._id);
     }
+    await logAudit(ctx, {
+      action: "clear_cart",
+      entityType: "cart",
+      entityId: String(userId),
+      companyId: String(args.companyId),
+      oldValues: { count: cartItems.length },
+    });
   },
 });

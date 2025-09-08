@@ -11,14 +11,16 @@ interface DashboardProps {
   company: {
     _id?: string;
     name?: string;
-    role: "admin" | "employee" | "manager";
+    role: "companyAdmin" | "employee";
     orderLimit: number;
   };
 }
 
 export function Dashboard({ company }: DashboardProps) {
   const [activeTab, setActiveTab] = useState("overview");
-  const [currentView, setCurrentView] = useState<"admin" | "employee">(company.role);
+  const [currentView, setCurrentView] = useState<"admin" | "employee">(
+    company.role === "companyAdmin" ? "admin" : "employee"
+  );
   
   const vendor = useQuery(api.vendors.getVendorByEmail);
 

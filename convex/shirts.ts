@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { logAudit } from "./util/audit";
+import { ensureCompanyAdmin } from "./util/rbac";
 
 export const createShirtType = mutation({
   args: {
@@ -15,19 +17,9 @@ export const createShirtType = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
-
-    return await ctx.db.insert("shirtTypes", {
+    const id = await ctx.db.insert("shirtTypes", {
       companyId: args.companyId,
       name: args.name,
       description: args.description || "",
@@ -37,6 +29,14 @@ export const createShirtType = mutation({
       isActive: true,
       allowPersonalization: false,
     });
+    await logAudit(ctx, {
+      action: "create_shirt_type",
+      entityType: "shirtType",
+      entityId: String(id),
+      companyId: String(args.companyId),
+      newValues: { name: args.name, basePrice: args.basePrice },
+    });
+    return id;
   },
 });
 
@@ -62,19 +62,9 @@ export const createShirtVariant = mutation({
       throw new Error("Shirt type not found");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", shirtType.companyId).eq("userId", userId)
-      )
-      .first();
+    await ensureCompanyAdmin(ctx, String(shirtType.companyId));
 
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
-
-    return await ctx.db.insert("shirtVariants", {
+    const id = await ctx.db.insert("shirtVariants", {
       shirtTypeId: args.shirtTypeId,
       sleeveLength: args.sleeveLength,
       color: args.color,
@@ -85,6 +75,14 @@ export const createShirtVariant = mutation({
       images: [],
       isActive: true,
     });
+    await logAudit(ctx, {
+      action: "create_shirt_variant",
+      entityType: "shirtVariant",
+      entityId: String(id),
+      companyId: String(shirtType.companyId),
+      newValues: { color: args.color, sleeveLength: args.sleeveLength },
+    });
+    return id;
   },
 });
 
@@ -153,17 +151,7 @@ export const updateShirtType = mutation({
       throw new Error("Shirt type not found");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", shirtType.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(shirtType.companyId));
 
     const updates: any = {};
     if (args.name !== undefined) updates.name = args.name;
@@ -172,5 +160,12 @@ export const updateShirtType = mutation({
     if (args.isActive !== undefined) updates.isActive = args.isActive;
 
     await ctx.db.patch(args.shirtTypeId, updates);
+    await logAudit(ctx, {
+      action: "update_shirt_type",
+      entityType: "shirtType",
+      entityId: String(args.shirtTypeId),
+      companyId: String(shirtType.companyId),
+      newValues: updates,
+    });
   },
 });

@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { logAudit } from "./util/audit";
+import { ensureCompanyAdmin } from "./util/rbac";
 
 export const createCompany = mutation({
   args: {
@@ -23,10 +25,18 @@ export const createCompany = mutation({
     await ctx.db.insert("companyMembers", {
       companyId,
       userId,
-      role: "admin",
+      role: "companyAdmin",
       orderLimit: 0, // Admins don't have order limits
       joinedAt: Date.now(),
       isActive: true,
+    });
+
+    await logAudit(ctx, {
+      action: "create_company",
+      entityType: "company",
+      entityId: String(companyId),
+      companyId: String(companyId),
+      newValues: { name: args.name },
     });
 
     return companyId;
@@ -44,20 +54,20 @@ export const updateCompany = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
-
+    const before = await ctx.db.get(args.companyId);
     await ctx.db.patch(args.companyId, {
       name: args.name,
+    });
+
+    await logAudit(ctx, {
+      action: "update_company",
+      entityType: "company",
+      entityId: String(args.companyId),
+      companyId: String(args.companyId),
+      oldValues: { name: before?.name },
+      newValues: { name: args.name },
     });
   },
 });
@@ -98,17 +108,7 @@ export const getCompanyMembers = query({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin of this company
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     const members = await ctx.db
       .query("companyMembers")
@@ -141,17 +141,7 @@ export const inviteEmployee = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     const token = crypto.randomUUID();
     const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -186,17 +176,7 @@ export const updateMemberOrderLimit = mutation({
       throw new Error("Member not found");
     }
 
-    // Check if user is admin of the company
-    const adminMembership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", member.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!adminMembership || adminMembership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(member.companyId));
 
     await ctx.db.patch(args.memberId, {
       orderLimit: args.orderLimit,
@@ -219,17 +199,7 @@ export const bulkUpdateMemberLimits = mutation({
     for (const memberId of args.memberIds) {
       const member = await ctx.db.get(memberId);
       if (!member) continue;
-
-      const adminMembership = await ctx.db
-        .query("companyMembers")
-        .withIndex("by_company_and_user", (q) => 
-          q.eq("companyId", member.companyId).eq("userId", userId)
-        )
-        .first();
-
-      if (!adminMembership || adminMembership.role !== "admin") {
-        throw new Error("Not authorized for all selected members");
-      }
+      await ensureCompanyAdmin(ctx, String(member.companyId));
     }
 
     // Update all members

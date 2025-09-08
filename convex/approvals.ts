@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { internal } from "./_generated/api";
+import { ensureCompanyAdmin } from "./util/rbac";
+import { logAudit } from "./util/audit";
 
 export const getPendingApprovals = query({
   args: {
@@ -13,17 +15,7 @@ export const getPendingApprovals = query({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin or manager
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || (membership.role !== "admin" && membership.role !== "manager")) {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     const orders = await ctx.db
       .query("orders")
@@ -71,17 +63,7 @@ export const approveOrder = mutation({
       throw new Error("Order not found");
     }
 
-    // Check if user is admin or manager
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", order.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || (membership.role !== "admin" && membership.role !== "manager")) {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(order.companyId));
 
     await ctx.db.patch(args.orderId, {
       status: "approved",
@@ -137,17 +119,7 @@ export const rejectOrder = mutation({
       throw new Error("Order not found");
     }
 
-    // Check if user is admin or manager
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", order.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || (membership.role !== "admin" && membership.role !== "manager")) {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(order.companyId));
 
     await ctx.db.patch(args.orderId, {
       status: "rejected",
@@ -169,15 +141,12 @@ export const rejectOrder = mutation({
       createdAt: Date.now(),
     });
 
-    // Log audit trail
-    await ctx.db.insert("auditLogs", {
-      userId,
-      companyId: order.companyId,
+    await logAudit(ctx, {
       action: "reject_order",
       entityType: "order",
-      entityId: args.orderId,
+      entityId: String(args.orderId),
+      companyId: String(order.companyId),
       newValues: { status: "rejected", rejectionReason: args.reason },
-      timestamp: Date.now(),
     });
   },
 });
@@ -198,14 +167,9 @@ export const bulkApproveOrders = mutation({
       if (!order) continue;
 
       // Check authorization for each order
-      const membership = await ctx.db
-        .query("companyMembers")
-        .withIndex("by_company_and_user", (q) => 
-          q.eq("companyId", order.companyId).eq("userId", userId)
-        )
-        .first();
-
-      if (!membership || (membership.role !== "admin" && membership.role !== "manager")) {
+      try {
+        await ensureCompanyAdmin(ctx, String(order.companyId));
+      } catch {
         continue;
       }
 
@@ -232,6 +196,14 @@ export const bulkApproveOrders = mutation({
       // Schedule PO creation
       await ctx.scheduler.runAfter(0, internal.purchaseOrders.createPOForOrder, {
         orderId,
+      });
+
+      await logAudit(ctx, {
+        action: "approve_order",
+        entityType: "order",
+        entityId: String(orderId),
+        companyId: String(order.companyId),
+        newValues: { status: "approved", bulk: true },
       });
     }
   },

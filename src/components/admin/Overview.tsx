@@ -2,7 +2,7 @@ interface OverviewProps {
   company: {
     _id?: string;
     name?: string;
-    role: "admin" | "employee";
+    role: "companyAdmin" | "employee";
     orderLimit: number;
   };
   orders: any[];

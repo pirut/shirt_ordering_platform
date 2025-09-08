@@ -3,11 +3,11 @@ import { useState } from "react";
 interface ViewToggleProps {
   currentView: "admin" | "employee";
   onViewChange: (view: "admin" | "employee") => void;
-  userRole: "admin" | "employee" | "manager";
+  userRole: "companyAdmin" | "employee";
 }
 
 export function ViewToggle({ currentView, onViewChange, userRole }: ViewToggleProps) {
-  if (userRole !== "admin" && userRole !== "manager") return null;
+  if (userRole !== "companyAdmin") return null;
 
   return (
     <div className="flex items-center space-x-2 bg-white rounded-lg p-1 shadow-sm border">

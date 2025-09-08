@@ -16,6 +16,7 @@ export function VendorManagement({ companyId }: VendorManagementProps) {
   const invoices = useQuery(api.vendors.getCompanyInvoices, { companyId });
   const createVendor = useMutation(api.vendors.createVendor);
   const createInvoice = useMutation(api.vendors.createInvoice);
+  const companyPOs = useQuery(api.purchaseOrders.getCompanyPOs, { companyId });
   const updateInvoiceStatus = useMutation(api.vendors.updateInvoiceStatus);
 
   return (
@@ -134,6 +135,7 @@ export function VendorManagement({ companyId }: VendorManagementProps) {
       {showCreateInvoice && (
         <CreateInvoiceForm
           vendorId={showCreateInvoice as Id<"vendors">}
+          purchaseOrders={(companyPOs || []).filter(po => String(po.vendorId) === showCreateInvoice)}
           onSubmit={createInvoice}
           onCancel={() => setShowCreateInvoice(null)}
         />
@@ -247,14 +249,17 @@ function AddVendorForm({
 
 function CreateInvoiceForm({ 
   vendorId, 
+  purchaseOrders,
   onSubmit, 
   onCancel 
 }: { 
   vendorId: Id<"vendors">;
+  purchaseOrders: Array<{ _id: Id<"purchaseOrders">; poNumber: string }>;
   onSubmit: any;
   onCancel: () => void;
 }) {
   const [formData, setFormData] = useState({
+    poId: "",
     amount: "",
     dueDate: "",
     notes: "",
@@ -263,13 +268,12 @@ function CreateInvoiceForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.amount || !formData.dueDate) return;
+    if (!formData.amount || !formData.dueDate || !formData.poId) return;
 
     setIsLoading(true);
     try {
       await onSubmit({
-        vendorId,
-        orderIds: [], // For now, empty array
+        poId: formData.poId as unknown as Id<"purchaseOrders">,
         amount: parseFloat(formData.amount),
         dueDate: new Date(formData.dueDate).getTime(),
         notes: formData.notes || undefined,
@@ -289,6 +293,24 @@ function CreateInvoiceForm({
       <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Create Invoice</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Purchase Order *
+            </label>
+            <select
+              value={formData.poId}
+              onChange={(e) => setFormData({ ...formData, poId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            >
+              <option value="">Select a PO for this vendor</option>
+              {purchaseOrders.map((po) => (
+                <option key={po._id} value={po._id}>
+                  {po.poNumber}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Amount *

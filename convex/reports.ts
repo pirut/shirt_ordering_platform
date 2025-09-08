@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { ensureCompanyAdmin } from "./util/rbac";
 
 export const getOrderReport = query({
   args: {
@@ -16,17 +17,7 @@ export const getOrderReport = query({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin or manager
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || (membership.role !== "admin" && membership.role !== "manager")) {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     let ordersQuery = ctx.db
       .query("orders")
@@ -111,17 +102,7 @@ export const getVendorReport = query({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     const pos = await ctx.db
       .query("purchaseOrders")

@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { logAudit } from "./util/audit";
+import { ensureCompanyMember, ensureCompanyAdmin, ensureVendorForCompany } from "./util/rbac";
 
 export const createOrderFromCart = mutation({
   args: {
@@ -25,17 +27,7 @@ export const createOrderFromCart = mutation({
       throw new Error("Cart is empty");
     }
 
-    // Check if user is member of company
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership) {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyMember(ctx, String(args.companyId));
 
     // Calculate total and prepare order items
     let totalAmount = 0;
@@ -82,6 +74,14 @@ export const createOrderFromCart = mutation({
       status,
       orderDate: Date.now(),
       notes: args.notes,
+    });
+
+    await logAudit(ctx, {
+      action: "create_order",
+      entityType: "order",
+      entityId: String(orderId),
+      companyId: String(args.companyId),
+      newValues: { orderNumber, totalAmount, items: orderItems.length },
     });
 
     // Clear the cart
@@ -134,19 +134,10 @@ export const getCompanyOrders = query({
     // Check if user is admin or vendor
     const membership = await ctx.db
       .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
+      .withIndex("by_company_and_user", (q) => q.eq("companyId", args.companyId).eq("userId", userId))
       .first();
-
-    const vendor = await ctx.db
-      .query("vendors")
-      .withIndex("by_company", (q) => q.eq("companyId", args.companyId))
-      .filter((q) => q.eq(q.field("email"), "")) // We'll need to match by email
-      .first();
-
-    if (!membership && !vendor) {
-      throw new Error("Not authorized");
+    if (!membership) {
+      await ensureVendorForCompany(ctx, String(args.companyId));
     }
 
     let ordersQuery = ctx.db
@@ -235,32 +226,32 @@ export const updateOrderStatus = mutation({
       throw new Error("Order not found");
     }
 
-    // Check if user is admin or vendor
+    // Check if user is companyAdmin or a vendor for this company
     const membership = await ctx.db
       .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", order.companyId).eq("userId", userId)
-      )
+      .withIndex("by_company_and_user", (q) => q.eq("companyId", order.companyId).eq("userId", userId))
       .first();
-
-    const user = await ctx.db.get(userId);
-    const vendor = user?.email ? await ctx.db
-      .query("vendors")
-      .withIndex("by_company", (q) => q.eq("companyId", order.companyId))
-      .filter((q) => q.eq(q.field("email"), user.email))
-      .first() : null;
-
-    if (!membership && !vendor) {
-      throw new Error("Not authorized");
+    if (!membership) {
+      await ensureVendorForCompany(ctx, String(order.companyId));
     }
 
-    // Only admins can set to cancelled, vendors can't cancel orders
-    if (args.status === "cancelled" && !membership) {
+    // Only company admins can cancel orders
+    if (args.status === "cancelled" && (!membership || membership.role !== "companyAdmin")) {
       throw new Error("Not authorized to cancel orders");
     }
 
+    const oldStatus = order.status;
     await ctx.db.patch(args.orderId, {
       status: args.status,
+    });
+
+    await logAudit(ctx, {
+      action: "update_order_status",
+      entityType: "order",
+      entityId: String(args.orderId),
+      companyId: String(order.companyId),
+      oldValues: { status: oldStatus },
+      newValues: { status: args.status },
     });
   },
 });
@@ -297,7 +288,7 @@ export const bulkUpdateOrderStatus = mutation({
         )
         .first();
 
-      if (!membership || membership.role !== "admin") {
+      if (!membership || membership.role !== "companyAdmin") {
         throw new Error("Not authorized for all selected orders");
       }
     }

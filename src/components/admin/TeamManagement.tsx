@@ -144,7 +144,7 @@ export function TeamManagement({ companyId }: TeamManagementProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      member.role === "admin" 
+                      member.role === "companyAdmin" 
                         ? "bg-purple-100 text-purple-800" 
                         : "bg-green-100 text-green-800"
                     }`}>
@@ -177,7 +177,7 @@ export function TeamManagement({ companyId }: TeamManagementProps) {
                     ) : (
                       <div className="flex items-center space-x-2">
                         <span className="text-sm text-gray-900">
-                          {member.role === "admin" ? "Unlimited" : member.orderLimit}
+                          {member.role === "companyAdmin" ? "Unlimited" : member.orderLimit}
                         </span>
                         {member.role === "employee" && (
                           <button

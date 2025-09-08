@@ -9,7 +9,7 @@ interface EmployeeDashboardProps {
   company: {
     _id?: string;
     name?: string;
-    role: "admin" | "employee" | "manager";
+    role: "companyAdmin" | "employee";
     orderLimit: number;
   };
   activeTab: string;

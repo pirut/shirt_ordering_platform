@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { logAudit } from "./util/audit";
+import { ensureCompanyAdmin, getCurrentVendorMembership } from "./util/rbac";
 
 export const createVendor = mutation({
   args: {
@@ -15,19 +17,9 @@ export const createVendor = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
-
-    return await ctx.db.insert("vendors", {
+    const vendorId = await ctx.db.insert("vendors", {
       companyId: args.companyId,
       name: args.name,
       email: args.email,
@@ -35,6 +27,14 @@ export const createVendor = mutation({
       capabilities: [],
       isActive: true,
     });
+    await logAudit(ctx, {
+      action: "create_vendor",
+      entityType: "vendor",
+      entityId: String(vendorId),
+      companyId: String(args.companyId),
+      newValues: { name: args.name, email: args.email },
+    });
+    return vendorId;
   },
 });
 
@@ -48,17 +48,7 @@ export const getCompanyVendors = query({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     return await ctx.db
       .query("vendors")
@@ -71,28 +61,17 @@ export const getCompanyVendors = query({
 export const getVendorByEmail = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      return null;
-    }
-
-    const user = await ctx.db.get(userId);
-    if (!user?.email) {
-      return null;
-    }
-
-    return await ctx.db
-      .query("vendors")
-      .withIndex("by_email", (q) => q.eq("email", user.email!))
-      .filter((q) => q.eq(q.field("isActive"), true))
-      .first();
+    const vm = await getCurrentVendorMembership(ctx);
+    if (!vm) return null;
+    const vendor = await ctx.db.get(vm.vendorId);
+    if (!vendor?.isActive) return null;
+    return vendor;
   },
 });
 
 export const createInvoice = mutation({
   args: {
-    vendorId: v.id("vendors"),
-    orderIds: v.array(v.id("orders")),
+    poId: v.id("purchaseOrders"),
     amount: v.number(),
     dueDate: v.number(),
     notes: v.optional(v.string()),
@@ -103,29 +82,19 @@ export const createInvoice = mutation({
       throw new Error("Not authenticated");
     }
 
-    const vendor = await ctx.db.get(args.vendorId);
-    if (!vendor) {
-      throw new Error("Vendor not found");
+    const po = await ctx.db.get(args.poId);
+    if (!po) {
+      throw new Error("Purchase order not found");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", vendor.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(po.companyId));
 
     const invoiceNumber = `INV-${Date.now()}`;
 
-    return await ctx.db.insert("invoices", {
-      vendorId: args.vendorId,
-      companyId: vendor.companyId,
-      purchaseOrderId: args.orderIds[0] as any, // Simplified for now
+    const invoiceId = await ctx.db.insert("invoices", {
+      vendorId: po.vendorId,
+      companyId: po.companyId,
+      purchaseOrderId: args.poId,
       amount: args.amount,
       status: "draft",
       invoiceNumber,
@@ -133,6 +102,16 @@ export const createInvoice = mutation({
       dueDate: args.dueDate,
       notes: args.notes,
     });
+
+    await logAudit(ctx, {
+      action: "create_invoice",
+      entityType: "invoice",
+      entityId: String(invoiceId),
+      companyId: String(po.companyId),
+      newValues: { invoiceNumber, amount: args.amount, poId: String(args.poId) },
+    });
+
+    return invoiceId;
   },
 });
 
@@ -146,17 +125,7 @@ export const getCompanyInvoices = query({
       throw new Error("Not authenticated");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", args.companyId).eq("userId", userId)
-      )
-      .first();
-
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
+    await ensureCompanyAdmin(ctx, String(args.companyId));
 
     const invoices = await ctx.db
       .query("invoices")
@@ -183,19 +152,8 @@ export const getVendorInvoices = query({
     vendorId: v.id("vendors"),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
-
-    const vendor = await ctx.db.get(args.vendorId);
-    if (!vendor) {
-      throw new Error("Vendor not found");
-    }
-
-    // Check if current user is this vendor
-    const user = await ctx.db.get(userId);
-    if (!user || !user.email || user.email !== vendor.email) {
+    const vm = await getCurrentVendorMembership(ctx);
+    if (!vm || String(vm.vendorId) !== String(args.vendorId)) {
       throw new Error("Not authorized");
     }
 
@@ -223,20 +181,20 @@ export const updateInvoiceStatus = mutation({
       throw new Error("Invoice not found");
     }
 
-    // Check if user is admin
-    const membership = await ctx.db
-      .query("companyMembers")
-      .withIndex("by_company_and_user", (q) => 
-        q.eq("companyId", invoice.companyId).eq("userId", userId)
-      )
-      .first();
+    await ensureCompanyAdmin(ctx, String(invoice.companyId));
 
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not authorized");
-    }
-
+    const before = await ctx.db.get(args.invoiceId);
     await ctx.db.patch(args.invoiceId, {
       status: args.status,
+    });
+
+    await logAudit(ctx, {
+      action: "update_invoice_status",
+      entityType: "invoice",
+      entityId: String(args.invoiceId),
+      companyId: String(invoice.companyId),
+      oldValues: { status: before?.status },
+      newValues: { status: args.status },
     });
   },
 });
