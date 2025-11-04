@@ -17,6 +17,7 @@ const applicationTables = {
       requireApproval: v.boolean(),
       maxOrderValue: v.optional(v.number()),
       allowPersonalization: v.boolean(),
+      allowPersonalPayment: v.optional(v.boolean()),
     })),
     isActive: v.boolean(),
   }).index("by_admin", ["adminId"]),
@@ -152,6 +153,7 @@ const applicationTables = {
     trackingNumber: v.optional(v.string()),
     carrier: v.optional(v.string()),
     estimatedDelivery: v.optional(v.number()),
+    paymentSource: v.union(v.literal("company_budget"), v.literal("personal_payment")),
   })
     .index("by_company", ["companyId"])
     .index("by_user", ["userId"])
@@ -328,6 +330,21 @@ const applicationTables = {
     createdAt: v.number(),
     isActive: v.boolean(),
   }).index("by_user", ["userId"]),
+
+  // Budgets
+  budgets: defineTable({
+    companyId: v.id("companies"),
+    periodType: v.union(v.literal("quarterly"), v.literal("yearly"), v.literal("monthly")),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    amount: v.number(),
+    spentAmount: v.number(),
+    createdAt: v.number(),
+    isActive: v.boolean(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_company_and_period", ["companyId", "periodType"])
+    .index("by_company_and_active", ["companyId", "isActive"]),
 };
 
 export default defineSchema({

@@ -20,11 +20,24 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
+  const [paymentSource, setPaymentSource] = useState<"company_budget" | "personal_payment">("personal_payment");
   const [isLoading, setIsLoading] = useState(false);
 
   const shirts = useQuery(api.shirts.getCompanyShirts, { companyId });
   const addToCart = useMutation(api.cart.addToCart);
   const createOrder = useMutation(api.orders.createOrderFromCart);
+
+  const totalPrice = selectedShirt && selectedVariant 
+    ? (selectedShirt.basePrice + selectedVariant.priceModifier) * quantity 
+    : 0;
+
+  // Check budget availability for monthly budget
+  const monthlyBudgetCheck = useQuery(
+    api.budgets.checkBudgetAvailability,
+    paymentSource === "company_budget" && totalPrice > 0
+      ? { companyId, periodType: "monthly", orderAmount: totalPrice }
+      : "skip"
+  );
 
   const handleShirtSelect = (shirt: any) => {
     setSelectedShirt(shirt);
@@ -62,6 +75,7 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
       // Then create order from cart
       await createOrder({
         companyId,
+        paymentSource,
         notes: notes || undefined,
       });
       toast.success("Order placed successfully!");
@@ -79,10 +93,6 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
       setIsLoading(false);
     }
   };
-
-  const totalPrice = selectedShirt && selectedVariant 
-    ? (selectedShirt.basePrice + selectedVariant.priceModifier) * quantity 
-    : 0;
 
   return (
     <div>
@@ -222,18 +232,64 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
                 />
               </div>
 
+              {/* Payment Method Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Method
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentSource"
+                      value="personal_payment"
+                      checked={paymentSource === "personal_payment"}
+                      onChange={() => setPaymentSource("personal_payment")}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Personal Payment</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentSource"
+                      value="company_budget"
+                      checked={paymentSource === "company_budget"}
+                      onChange={() => setPaymentSource("company_budget")}
+                      disabled={monthlyBudgetCheck?.available === false}
+                      className="text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                    />
+                    <span className="text-sm text-gray-700">
+                      Company Budget
+                      {monthlyBudgetCheck && (
+                        <span className="ml-2 text-xs text-gray-500">
+                          ({monthlyBudgetCheck.available
+                            ? `$${monthlyBudgetCheck.budget?.remaining.toFixed(2)} available`
+                            : "Insufficient funds"})
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               {totalPrice > 0 && (
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-gray-900">Total Price:</span>
-                    <span className="text-xl font-bold text-green-600">${totalPrice}</span>
+                    <span className="text-xl font-bold text-green-600">${totalPrice.toFixed(2)}</span>
                   </div>
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={isLoading || !selectedSize || Boolean(orderStats && quantity > orderStats.remainingLimit)}
+                disabled={
+                  isLoading ||
+                  !selectedSize ||
+                  Boolean(orderStats && quantity > orderStats.remainingLimit) ||
+                  (paymentSource === "company_budget" && monthlyBudgetCheck?.available === false)
+                }
                 className="w-full px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? "Placing Order..." : "Place Order"}

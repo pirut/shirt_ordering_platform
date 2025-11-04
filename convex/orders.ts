@@ -3,10 +3,12 @@ import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { logAudit } from "./util/audit";
 import { ensureCompanyMember, ensureCompanyAdmin, ensureVendorForCompany } from "./util/rbac";
+import { api, internal } from "./_generated/api";
 
 export const createOrderFromCart = mutation({
   args: {
     companyId: v.id("companies"),
+    paymentSource: v.union(v.literal("company_budget"), v.literal("personal_payment")),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -64,6 +66,31 @@ export const createOrderFromCart = mutation({
     const orderNumber = `ORD-${Date.now()}`;
     const status = "pending_approval";
 
+    // If using company budget, check availability
+    if (args.paymentSource === "company_budget") {
+      // Check budget availability for monthly, quarterly, and yearly
+      // We'll check all period types and use the first available one
+      const periodTypes: Array<"monthly" | "quarterly" | "yearly"> = ["monthly", "quarterly", "yearly"];
+      let budgetAvailable = false;
+
+      for (const periodType of periodTypes) {
+        const budgetCheck = await ctx.runQuery(api.budgets.checkBudgetAvailability, {
+          companyId: args.companyId,
+          periodType,
+          orderAmount: totalAmount,
+        });
+
+        if (budgetCheck.available && budgetCheck.budget) {
+          budgetAvailable = true;
+          break;
+        }
+      }
+
+      if (!budgetAvailable) {
+        throw new Error("Insufficient budget available for this order");
+      }
+    }
+
     // Create the order
     const orderId = await ctx.db.insert("orders", {
       companyId: args.companyId,
@@ -74,6 +101,7 @@ export const createOrderFromCart = mutation({
       status,
       orderDate: Date.now(),
       notes: args.notes,
+      paymentSource: args.paymentSource,
     });
 
     await logAudit(ctx, {
@@ -244,6 +272,16 @@ export const updateOrderStatus = mutation({
     await ctx.db.patch(args.orderId, {
       status: args.status,
     });
+
+    // If order is being cancelled and uses company budget, refund the budget
+    if (args.status === "cancelled" && oldStatus !== "cancelled" && order.paymentSource === "company_budget") {
+      // Only refund if order was previously approved or higher (budget was debited)
+      if (oldStatus === "approved" || oldStatus === "confirmed" || oldStatus === "in_production" || oldStatus === "shipped") {
+        await ctx.scheduler.runAfter(0, internal.budgets.refundBudget, {
+          orderId: args.orderId,
+        });
+      }
+    }
 
     await logAudit(ctx, {
       action: "update_order_status",

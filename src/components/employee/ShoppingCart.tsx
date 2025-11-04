@@ -11,11 +11,26 @@ interface ShoppingCartProps {
 
 export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [paymentSource, setPaymentSource] = useState<"company_budget" | "personal_payment">("personal_payment");
   
   const cartItems = useQuery(api.cart.getCartItems);
   const updateCartItem = useMutation(api.cart.updateCartItem);
   const removeFromCart = useMutation(api.cart.removeFromCart);
   const createOrder = useMutation(api.orders.createOrderFromCart);
+
+  const totalAmount = cartItems?.reduce((sum, item) => {
+    const basePrice = item.shirtType?.basePrice || 0;
+    const priceModifier = item.variant?.priceModifier || 0;
+    return sum + (basePrice + priceModifier) * item.quantity;
+  }, 0) || 0;
+
+  // Check budget availability for monthly budget
+  const monthlyBudgetCheck = useQuery(
+    api.budgets.checkBudgetAvailability,
+    paymentSource === "company_budget" && totalAmount > 0
+      ? { companyId, periodType: "monthly", orderAmount: totalAmount }
+      : "skip"
+  );
 
   const handleQuantityChange = async (itemId: string, newQuantity: number) => {
     try {
@@ -46,6 +61,7 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
     try {
       const orderId = await createOrder({
         companyId,
+        paymentSource,
         notes: "Order placed from shopping cart",
       });
       
@@ -57,12 +73,6 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
       setIsCheckingOut(false);
     }
   };
-
-  const totalAmount = cartItems?.reduce((sum, item) => {
-    const basePrice = item.shirtType?.basePrice || 0;
-    const priceModifier = item.variant?.priceModifier || 0;
-    return sum + (basePrice + priceModifier) * item.quantity;
-  }, 0) || 0;
 
   if (!cartItems) {
     return (
@@ -151,6 +161,47 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
               <span className="text-lg font-semibold text-gray-900">Total:</span>
               <span className="text-xl font-bold text-blue-600">${totalAmount.toFixed(2)}</span>
             </div>
+
+            {/* Payment Method Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Payment Method
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="paymentSource"
+                    value="personal_payment"
+                    checked={paymentSource === "personal_payment"}
+                    onChange={() => setPaymentSource("personal_payment")}
+                    className="text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Personal Payment</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="paymentSource"
+                    value="company_budget"
+                    checked={paymentSource === "company_budget"}
+                    onChange={() => setPaymentSource("company_budget")}
+                    disabled={monthlyBudgetCheck?.available === false}
+                    className="text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  <span className="text-sm text-gray-700">
+                    Company Budget
+                    {monthlyBudgetCheck && (
+                      <span className="ml-2 text-xs text-gray-500">
+                        ({monthlyBudgetCheck.available
+                          ? `$${monthlyBudgetCheck.budget?.remaining.toFixed(2)} available`
+                          : "Insufficient funds"})
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </div>
+            </div>
             
             <div className="flex space-x-3">
               <button
@@ -161,7 +212,7 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
               </button>
               <button
                 onClick={handleCheckout}
-                disabled={isCheckingOut}
+                disabled={isCheckingOut || (paymentSource === "company_budget" && monthlyBudgetCheck?.available === false)}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {isCheckingOut ? "Placing Order..." : "Place Order"}

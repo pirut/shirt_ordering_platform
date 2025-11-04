@@ -1,3 +1,7 @@
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
+
 interface OverviewProps {
   company: {
     _id?: string;
@@ -9,6 +13,16 @@ interface OverviewProps {
 }
 
 export function Overview({ company, orders }: OverviewProps) {
+  const budgetSummary = useQuery(api.budgets.getBudgetSummary, {
+    companyId: company._id as Id<"companies">,
+  });
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(amount);
+  };
   const pendingOrders = orders.filter(order => order.status === "pending").length;
   const inProductionOrders = orders.filter(order => order.status === "in_production").length;
   const completedOrders = orders.filter(order => order.status === "completed").length;
@@ -65,6 +79,64 @@ export function Overview({ company, orders }: OverviewProps) {
         ))}
       </div>
 
+      {/* Budget Summary */}
+      {budgetSummary && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {(["monthly", "quarterly", "yearly"] as const).map((periodType) => {
+            const budget = budgetSummary[periodType];
+            if (!budget) {
+              return (
+                <div key={periodType} className="bg-white rounded-lg shadow-sm p-6 border-2 border-dashed border-gray-300">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold text-gray-700 capitalize">{periodType} Budget</h3>
+                    <span className="text-sm text-gray-500">Not set</span>
+                  </div>
+                  <p className="text-sm text-gray-500">No active {periodType} budget</p>
+                </div>
+              );
+            }
+
+            const percentage = Math.min((budget.spentAmount / budget.amount) * 100, 100);
+            const remaining = budget.remaining;
+
+            return (
+              <div key={periodType} className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 capitalize">{periodType} Budget</h3>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    remaining > 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                  }`}>
+                    {remaining > 0 ? "Active" : "Exceeded"}
+                  </span>
+                </div>
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-600">Spent</span>
+                    <span className="font-semibold">
+                      {formatCurrency(budget.spentAmount)} / {formatCurrency(budget.amount)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        percentage >= 90 ? "bg-red-500" : percentage >= 75 ? "bg-yellow-500" : "bg-green-500"
+                      }`}
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Remaining</span>
+                  <span className={`font-semibold ${remaining >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatCurrency(remaining)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Recent Orders */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="px-6 py-4 border-b">
@@ -93,16 +165,27 @@ export function Overview({ company, orders }: OverviewProps) {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-gray-900">${order.totalPrice}</p>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      order.status === "pending" ? "bg-yellow-100 text-yellow-800" :
-                      order.status === "confirmed" ? "bg-blue-100 text-blue-800" :
-                      order.status === "in_production" ? "bg-orange-100 text-orange-800" :
-                      order.status === "completed" ? "bg-green-100 text-green-800" :
-                      "bg-red-100 text-red-800"
-                    }`}>
-                      {order.status.replace("_", " ")}
-                    </span>
+                    <p className="font-semibold text-gray-900">${order.totalAmount || order.totalPrice}</p>
+                    <div className="flex items-center justify-end space-x-2 mt-1">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        order.status === "pending_approval" || order.status === "pending" ? "bg-yellow-100 text-yellow-800" :
+                        order.status === "approved" || order.status === "confirmed" ? "bg-blue-100 text-blue-800" :
+                        order.status === "in_production" ? "bg-orange-100 text-orange-800" :
+                        order.status === "delivered" || order.status === "completed" ? "bg-green-100 text-green-800" :
+                        "bg-red-100 text-red-800"
+                      }`}>
+                        {order.status.replace("_", " ")}
+                      </span>
+                      {order.paymentSource && (
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          order.paymentSource === "company_budget"
+                            ? "bg-purple-100 text-purple-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}>
+                          {order.paymentSource === "company_budget" ? "Budget" : "Personal"}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

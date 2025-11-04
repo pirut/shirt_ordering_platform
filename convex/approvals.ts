@@ -86,15 +86,20 @@ export const approveOrder = mutation({
     });
 
     // Log audit trail
-    await ctx.db.insert("auditLogs", {
-      userId,
-      companyId: order.companyId,
+    await logAudit(ctx, {
       action: "approve_order",
       entityType: "order",
-      entityId: args.orderId,
+      entityId: String(args.orderId),
+      companyId: String(order.companyId),
       newValues: { status: "approved", approvedBy: userId },
-      timestamp: Date.now(),
     });
+
+    // If order uses company budget, debit the budget
+    if (order.paymentSource === "company_budget") {
+      await ctx.scheduler.runAfter(0, internal.budgets.debitBudget, {
+        orderId: args.orderId,
+      });
+    }
 
     // Schedule PO creation
     await ctx.scheduler.runAfter(0, internal.purchaseOrders.createPOForOrder, {
@@ -192,6 +197,13 @@ export const bulkApproveOrders = mutation({
         isRead: false,
         createdAt: Date.now(),
       });
+
+      // If order uses company budget, debit the budget
+      if (order.paymentSource === "company_budget") {
+        await ctx.scheduler.runAfter(0, internal.budgets.debitBudget, {
+          orderId,
+        });
+      }
 
       // Schedule PO creation
       await ctx.scheduler.runAfter(0, internal.purchaseOrders.createPOForOrder, {
