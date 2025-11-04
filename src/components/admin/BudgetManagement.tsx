@@ -11,8 +11,14 @@ interface BudgetManagementProps {
 export function BudgetManagement({ companyId }: BudgetManagementProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "create" | "allocate" | "reports">("overview");
   
-  const budgets = useQuery(api.budgets.getCompanyBudgets, { companyId });
-  const budgetSummary = useQuery(api.budgets.getBudgetSummary, { companyId });
+  const budgets = useQuery(
+    api.budgets.getCompanyBudgets,
+    companyId ? { companyId } : undefined
+  );
+  const budgetSummary = useQuery(
+    api.budgets.getBudgetSummary,
+    companyId ? { companyId } : undefined
+  );
   const members = useQuery(api.companies.getCompanyMembers, { companyId });
   const createBudget = useMutation(api.budgets.createCompanyBudget);
   const allocateBudget = useMutation(api.budgets.allocateEmployeeBudget);

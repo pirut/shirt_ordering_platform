@@ -353,21 +353,71 @@ export const getUserOrderStats = query({
     const totalOrdered = orders.reduce((sum, order) => sum + order.totalAmount, 0);
     const remainingLimit = membership.orderLimit - totalOrdered;
 
-    // Get budget information
-    const employeeBudget = await ctx.runQuery(api.budgets.getEmployeeBudget, {
-      companyId: membership.companyId,
-    });
+    // Get budget information directly without using runQuery
+    let budget = null;
+    try {
+      // Get active budget for the company
+      const now = Date.now();
+      const activeBudgets = await ctx.db
+        .query("companyBudgets")
+        .withIndex("by_company_and_status", (q) => 
+          q.eq("companyId", membership.companyId).eq("status", "active")
+        )
+        .collect();
+
+      const currentBudget = activeBudgets.find(
+        (b) => b.periodStart <= now && b.periodEnd >= now
+      );
+
+      if (currentBudget) {
+        // Get employee budget allocation
+        const employeeBudget = await ctx.db
+          .query("employeeBudgets")
+          .withIndex("by_member_and_budget", (q) => 
+            q.eq("memberId", membership._id).eq("companyBudgetId", currentBudget._id)
+          )
+          .first();
+
+        if (employeeBudget) {
+          // Calculate real-time spent from orders
+          const budgetOrders = await ctx.db
+            .query("orders")
+            .withIndex("by_budget", (q) => q.eq("budgetId", currentBudget._id))
+            .filter((q) => 
+              q.and(
+                q.eq(q.field("employeeBudgetId"), employeeBudget._id),
+                q.or(
+                  q.eq(q.field("status"), "approved"),
+                  q.eq(q.field("status"), "confirmed"),
+                  q.eq(q.field("status"), "in_production"),
+                  q.eq(q.field("status"), "shipped"),
+                  q.eq(q.field("status"), "delivered")
+                )
+              )
+            )
+            .collect();
+
+          const actualSpent = budgetOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+          const actualRemaining = employeeBudget.allocatedAmount - actualSpent;
+
+          budget = {
+            allocated: employeeBudget.allocatedAmount,
+            spent: actualSpent,
+            remaining: actualRemaining,
+          };
+        }
+      }
+    } catch (error) {
+      // Budget might not exist yet, that's okay
+      console.log("Budget check failed:", error);
+    }
 
     return {
       totalOrdered,
       orderLimit: membership.orderLimit,
       remainingLimit,
       orders: orders.length,
-      budget: employeeBudget ? {
-        allocated: employeeBudget.allocatedAmount,
-        spent: employeeBudget.calculatedSpent,
-        remaining: employeeBudget.calculatedRemaining,
-      } : null,
+      budget,
     };
   },
 });

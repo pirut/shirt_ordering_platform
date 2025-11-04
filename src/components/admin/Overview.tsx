@@ -13,9 +13,10 @@ interface OverviewProps {
 }
 
 export function Overview({ company, orders }: OverviewProps) {
-  const budgetSummary = useQuery(api.budgets.getBudgetSummary, {
-    companyId: company._id as Id<"companies">,
-  });
+  const budgetSummary = useQuery(
+    api.budgets.getBudgetSummary,
+    company._id ? { companyId: company._id as Id<"companies"> } : undefined
+  );
 
   const pendingOrders = orders.filter(order => order.status === "pending").length;
   const inProductionOrders = orders.filter(order => order.status === "in_production").length;

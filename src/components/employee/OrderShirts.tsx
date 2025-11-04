@@ -29,7 +29,10 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const shirts = useQuery(api.shirts.getCompanyShirts, { companyId });
-  const employeeBudget = useQuery(api.budgets.getEmployeeBudget, { companyId });
+  const employeeBudget = useQuery(
+    api.budgets.getEmployeeBudget,
+    companyId ? { companyId } : undefined
+  );
   const addToCart = useMutation(api.cart.addToCart);
   const createOrder = useMutation(api.orders.createOrderFromCart);
 

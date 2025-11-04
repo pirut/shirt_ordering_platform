@@ -39,7 +39,7 @@ export function Dashboard({ company }: DashboardProps) {
       {/* Top Bar with View Toggle */}
       <div className="bg-white border-b px-8 py-4 flex justify-between items-center">
         <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-bold text-gray-900">{company.name}</h1>
+          <h1 className="text-xl font-bold text-gray-900">{company.name || "Company"}</h1>
           <ViewToggle
             currentView={currentView}
             onViewChange={handleViewChange}

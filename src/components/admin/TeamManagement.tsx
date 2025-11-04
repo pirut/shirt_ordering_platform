@@ -16,7 +16,10 @@ export function TeamManagement({ companyId }: TeamManagementProps) {
   const [newOrderLimit, setNewOrderLimit] = useState(10);
 
   const members = useQuery(api.companies.getCompanyMembers, { companyId });
-  const budgetSummary = useQuery(api.budgets.getBudgetSummary, { companyId });
+  const budgetSummary = useQuery(
+    api.budgets.getBudgetSummary,
+    companyId ? { companyId } : undefined
+  );
   const inviteEmployee = useMutation(api.companies.inviteEmployee);
   const updateMemberOrderLimit = useMutation(api.companies.updateMemberOrderLimit);
 

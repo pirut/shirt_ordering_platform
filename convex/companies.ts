@@ -90,6 +90,10 @@ export const getUserCompany = query({
     }
 
     const company = await ctx.db.get(membership.companyId);
+    if (!company) {
+      return null;
+    }
+
     return {
       ...company,
       role: membership.role,
