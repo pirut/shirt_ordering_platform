@@ -11,6 +11,11 @@ interface OrderShirtsProps {
     orderLimit: number;
     remainingLimit: number;
     orders: number;
+    budget: {
+      allocated: number;
+      spent: number;
+      remaining: number;
+    } | null;
   } | null | undefined;
 }
 
@@ -20,9 +25,11 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
+  const [paymentSource, setPaymentSource] = useState<"company_budget" | "personal">("personal");
   const [isLoading, setIsLoading] = useState(false);
 
   const shirts = useQuery(api.shirts.getCompanyShirts, { companyId });
+  const employeeBudget = useQuery(api.budgets.getEmployeeBudget, { companyId });
   const addToCart = useMutation(api.cart.addToCart);
   const createOrder = useMutation(api.orders.createOrderFromCart);
 
@@ -63,6 +70,7 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
       await createOrder({
         companyId,
         notes: notes || undefined,
+        paymentSource,
       });
       toast.success("Order placed successfully!");
       
@@ -90,14 +98,24 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Shirts</h1>
         <p className="text-gray-600">Select from available shirt options and place your order</p>
         
-        {orderStats && (
-          <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
-              <strong>Order Limit:</strong> {orderStats.remainingLimit} items remaining 
-              ({orderStats.totalOrdered} of {orderStats.orderLimit} used)
-            </p>
-          </div>
-        )}
+        <div className="mt-4 space-y-2">
+          {orderStats && (
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Order Limit:</strong> {orderStats.remainingLimit} items remaining 
+                ({orderStats.totalOrdered} of {orderStats.orderLimit} used)
+              </p>
+            </div>
+          )}
+          {orderStats?.budget && (
+            <div className="p-4 bg-green-50 rounded-lg">
+              <p className="text-sm text-green-800">
+                <strong>Budget Available:</strong> ${orderStats.budget.remaining.toFixed(2)} remaining 
+                (${orderStats.budget.spent.toFixed(2)} of ${orderStats.budget.allocated.toFixed(2)} used)
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -211,6 +229,56 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Source *
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center p-3 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="paymentSource"
+                      value="personal"
+                      checked={paymentSource === "personal"}
+                      onChange={(e) => setPaymentSource(e.target.value as any)}
+                      className="mr-3"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium text-gray-900">Personal Payment</span>
+                      <p className="text-xs text-gray-500 mt-1">Pay with your own money</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-center p-3 border rounded-lg cursor-pointer ${
+                    employeeBudget ? "border-gray-300 hover:bg-gray-50" : "border-gray-200 opacity-50 cursor-not-allowed"
+                  }`}>
+                    <input
+                      type="radio"
+                      name="paymentSource"
+                      value="company_budget"
+                      checked={paymentSource === "company_budget"}
+                      onChange={(e) => setPaymentSource(e.target.value as any)}
+                      disabled={!employeeBudget}
+                      className="mr-3"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium text-gray-900">Company Budget</span>
+                      {employeeBudget ? (
+                        <p className="text-xs text-gray-500 mt-1">
+                          ${employeeBudget.calculatedRemaining.toFixed(2)} remaining
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-500 mt-1">No budget allocation available</p>
+                      )}
+                    </div>
+                  </label>
+                </div>
+                {paymentSource === "company_budget" && employeeBudget && totalPrice > employeeBudget.calculatedRemaining && (
+                  <p className="text-red-600 text-sm mt-2">
+                    Order amount (${totalPrice.toFixed(2)}) exceeds remaining budget (${employeeBudget.calculatedRemaining.toFixed(2)})
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Notes (Optional)
                 </label>
                 <textarea
@@ -224,16 +292,24 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
 
               {totalPrice > 0 && (
                 <div className="p-4 bg-gray-50 rounded-lg">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center mb-2">
                     <span className="font-medium text-gray-900">Total Price:</span>
-                    <span className="text-xl font-bold text-green-600">${totalPrice}</span>
+                    <span className="text-xl font-bold text-green-600">${totalPrice.toFixed(2)}</span>
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    Payment: {paymentSource === "company_budget" ? "Company Budget" : "Personal"}
                   </div>
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={isLoading || !selectedSize || Boolean(orderStats && quantity > orderStats.remainingLimit)}
+                disabled={
+                  isLoading || 
+                  !selectedSize || 
+                  Boolean(orderStats && quantity > orderStats.remainingLimit) ||
+                  Boolean(paymentSource === "company_budget" && employeeBudget && totalPrice > employeeBudget.calculatedRemaining)
+                }
                 className="w-full px-4 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? "Placing Order..." : "Place Order"}

@@ -3,11 +3,13 @@ import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { logAudit } from "./util/audit";
 import { ensureCompanyMember, ensureCompanyAdmin, ensureVendorForCompany } from "./util/rbac";
+import { api } from "./_generated/api";
 
 export const createOrderFromCart = mutation({
   args: {
     companyId: v.id("companies"),
     notes: v.optional(v.string()),
+    paymentSource: v.optional(v.union(v.literal("company_budget"), v.literal("personal"))),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -27,7 +29,7 @@ export const createOrderFromCart = mutation({
       throw new Error("Cart is empty");
     }
 
-    await ensureCompanyMember(ctx, String(args.companyId));
+    const { membership } = await ensureCompanyMember(ctx, String(args.companyId));
 
     // Calculate total and prepare order items
     let totalAmount = 0;
@@ -61,6 +63,26 @@ export const createOrderFromCart = mutation({
       });
     }
 
+    // Validate budget if using company budget
+    let budgetId: any = undefined;
+    let employeeBudgetId: any = undefined;
+    const paymentSource = args.paymentSource || "personal";
+
+    if (paymentSource === "company_budget") {
+      const budgetCheck = await ctx.runQuery(api.budgets.checkBudgetAvailability, {
+        companyId: args.companyId,
+        amount: totalAmount,
+        memberId: membership._id,
+      });
+
+      if (!budgetCheck.available) {
+        throw new Error(budgetCheck.reason || "Insufficient budget");
+      }
+
+      budgetId = budgetCheck.budgetId;
+      employeeBudgetId = budgetCheck.employeeBudgetId;
+    }
+
     const orderNumber = `ORD-${Date.now()}`;
     const status = "pending_approval";
 
@@ -74,6 +96,9 @@ export const createOrderFromCart = mutation({
       status,
       orderDate: Date.now(),
       notes: args.notes,
+      paymentSource,
+      budgetId,
+      employeeBudgetId,
     });
 
     await logAudit(ctx, {
@@ -81,7 +106,7 @@ export const createOrderFromCart = mutation({
       entityType: "order",
       entityId: String(orderId),
       companyId: String(args.companyId),
-      newValues: { orderNumber, totalAmount, items: orderItems.length },
+      newValues: { orderNumber, totalAmount, items: orderItems.length, paymentSource },
     });
 
     // Clear the cart
@@ -328,11 +353,21 @@ export const getUserOrderStats = query({
     const totalOrdered = orders.reduce((sum, order) => sum + order.totalAmount, 0);
     const remainingLimit = membership.orderLimit - totalOrdered;
 
+    // Get budget information
+    const employeeBudget = await ctx.runQuery(api.budgets.getEmployeeBudget, {
+      companyId: membership.companyId,
+    });
+
     return {
       totalOrdered,
       orderLimit: membership.orderLimit,
       remainingLimit,
       orders: orders.length,
+      budget: employeeBudget ? {
+        allocated: employeeBudget.allocatedAmount,
+        spent: employeeBudget.calculatedSpent,
+        remaining: employeeBudget.calculatedRemaining,
+      } : null,
     };
   },
 });

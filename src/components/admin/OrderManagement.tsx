@@ -121,6 +121,9 @@ export function OrderManagement({ companyId, orders }: OrderManagementProps) {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Payment
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -182,6 +185,19 @@ export function OrderManagement({ companyId, orders }: OrderManagementProps) {
                     }`}>
                       {order.status.replace("_", " ")}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {order.paymentSource ? (
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        order.paymentSource === "company_budget"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}>
+                        {order.paymentSource === "company_budget" ? "💰 Budget" : "💳 Personal"}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(order.orderDate).toLocaleDateString()}

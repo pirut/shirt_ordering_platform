@@ -152,11 +152,15 @@ const applicationTables = {
     trackingNumber: v.optional(v.string()),
     carrier: v.optional(v.string()),
     estimatedDelivery: v.optional(v.number()),
+    paymentSource: v.optional(v.union(v.literal("company_budget"), v.literal("personal"))),
+    budgetId: v.optional(v.id("companyBudgets")),
+    employeeBudgetId: v.optional(v.id("employeeBudgets")),
   })
     .index("by_company", ["companyId"])
     .index("by_user", ["userId"])
     .index("by_company_and_status", ["companyId", "status"])
-    .index("by_order_number", ["orderNumber"]),
+    .index("by_order_number", ["orderNumber"])
+    .index("by_budget", ["budgetId"]),
 
   // Vendors
   vendors: defineTable({
@@ -328,6 +332,39 @@ const applicationTables = {
     createdAt: v.number(),
     isActive: v.boolean(),
   }).index("by_user", ["userId"]),
+
+  // Company Budgets
+  companyBudgets: defineTable({
+    companyId: v.id("companies"),
+    periodType: v.union(v.literal("monthly"), v.literal("quarterly"), v.literal("yearly")),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    totalBudget: v.number(),
+    allocatedBudget: v.number(),
+    spentBudget: v.number(),
+    remainingBudget: v.number(),
+    status: v.union(v.literal("active"), v.literal("completed"), v.literal("cancelled")),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    notes: v.optional(v.string()),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_company_and_status", ["companyId", "status"])
+    .index("by_company_and_period", ["companyId", "periodStart", "periodEnd"]),
+
+  // Employee Budgets
+  employeeBudgets: defineTable({
+    companyBudgetId: v.id("companyBudgets"),
+    memberId: v.id("companyMembers"),
+    allocatedAmount: v.number(),
+    spentAmount: v.number(),
+    remainingAmount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company_budget", ["companyBudgetId"])
+    .index("by_member", ["memberId"])
+    .index("by_member_and_budget", ["memberId", "companyBudgetId"]),
 };
 
 export default defineSchema({

@@ -1,3 +1,7 @@
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
+
 interface OverviewProps {
   company: {
     _id?: string;
@@ -9,10 +13,21 @@ interface OverviewProps {
 }
 
 export function Overview({ company, orders }: OverviewProps) {
+  const budgetSummary = useQuery(api.budgets.getBudgetSummary, {
+    companyId: company._id as Id<"companies">,
+  });
+
   const pendingOrders = orders.filter(order => order.status === "pending").length;
   const inProductionOrders = orders.filter(order => order.status === "in_production").length;
   const completedOrders = orders.filter(order => order.status === "completed").length;
-  const totalRevenue = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+  const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || order.totalPrice || 0), 0);
+  
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(amount);
+  };
 
   const stats = [
     {
@@ -65,6 +80,50 @@ export function Overview({ company, orders }: OverviewProps) {
         ))}
       </div>
 
+      {/* Budget Summary */}
+      {budgetSummary && budgetSummary.hasActiveBudget && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg shadow-sm p-6 mb-8 border border-green-200">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Budget Overview</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-1">Total Budget</p>
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(budgetSummary.totalBudget)}</p>
+            </div>
+            <div className="bg-white rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-1">Allocated</p>
+              <p className="text-2xl font-bold text-blue-600">{formatCurrency(budgetSummary.allocatedBudget)}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {((budgetSummary.allocatedBudget / budgetSummary.totalBudget) * 100).toFixed(1)}% of total
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-1">Spent</p>
+              <p className="text-2xl font-bold text-orange-600">{formatCurrency(budgetSummary.spentBudget)}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {((budgetSummary.spentBudget / budgetSummary.totalBudget) * 100).toFixed(1)}% of total
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-1">Remaining</p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(budgetSummary.remainingBudget)}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {((budgetSummary.remainingBudget / budgetSummary.totalBudget) * 100).toFixed(1)}% of total
+              </p>
+            </div>
+          </div>
+          {budgetSummary.budget && (
+            <div className="mt-4 text-sm text-gray-600">
+              <p>
+                Period: {new Date(budgetSummary.budget.periodStart).toLocaleDateString()} - {new Date(budgetSummary.budget.periodEnd).toLocaleDateString()}
+              </p>
+              <p className="mt-1">
+                Type: {budgetSummary.budget.periodType.charAt(0).toUpperCase() + budgetSummary.budget.periodType.slice(1)}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Recent Orders */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="px-6 py-4 border-b">
@@ -93,16 +152,27 @@ export function Overview({ company, orders }: OverviewProps) {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-gray-900">${order.totalPrice}</p>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      order.status === "pending" ? "bg-yellow-100 text-yellow-800" :
-                      order.status === "confirmed" ? "bg-blue-100 text-blue-800" :
-                      order.status === "in_production" ? "bg-orange-100 text-orange-800" :
-                      order.status === "completed" ? "bg-green-100 text-green-800" :
-                      "bg-red-100 text-red-800"
-                    }`}>
-                      {order.status.replace("_", " ")}
-                    </span>
+                    <p className="font-semibold text-gray-900">${order.totalAmount || order.totalPrice}</p>
+                    <div className="flex flex-col items-end space-y-1 mt-1">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        order.status === "pending" ? "bg-yellow-100 text-yellow-800" :
+                        order.status === "confirmed" ? "bg-blue-100 text-blue-800" :
+                        order.status === "in_production" ? "bg-orange-100 text-orange-800" :
+                        order.status === "completed" ? "bg-green-100 text-green-800" :
+                        "bg-red-100 text-red-800"
+                      }`}>
+                        {order.status.replace("_", " ")}
+                      </span>
+                      {order.paymentSource && (
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          order.paymentSource === "company_budget"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}>
+                          {order.paymentSource === "company_budget" ? "💰 Budget" : "💳 Personal"}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

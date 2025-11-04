@@ -16,8 +16,21 @@ export function TeamManagement({ companyId }: TeamManagementProps) {
   const [newOrderLimit, setNewOrderLimit] = useState(10);
 
   const members = useQuery(api.companies.getCompanyMembers, { companyId });
+  const budgetSummary = useQuery(api.budgets.getBudgetSummary, { companyId });
   const inviteEmployee = useMutation(api.companies.inviteEmployee);
   const updateMemberOrderLimit = useMutation(api.companies.updateMemberOrderLimit);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(amount);
+  };
+
+  const getEmployeeBudget = (memberId: string) => {
+    if (!budgetSummary?.employeeAllocations) return null;
+    return budgetSummary.employeeAllocations.find((alloc: any) => alloc.memberId === memberId);
+  };
 
   const handleSelectMember = (memberId: string) => {
     setSelectedMembers(prev => 
@@ -107,6 +120,9 @@ export function TeamManagement({ companyId }: TeamManagementProps) {
                   Order Limit
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Budget Allocation
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Joined
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -192,6 +208,46 @@ export function TeamManagement({ companyId }: TeamManagementProps) {
                         )}
                       </div>
                     )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {(() => {
+                      const budget = getEmployeeBudget(member._id);
+                      if (!budget) {
+                        return (
+                          <span className="text-sm text-gray-400">No allocation</span>
+                        );
+                      }
+                      return (
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-900">
+                            {formatCurrency(budget.allocatedAmount)}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Spent: {formatCurrency(budget.calculatedSpent ?? budget.spentAmount)} • 
+                            Remaining: {formatCurrency(budget.calculatedRemaining ?? budget.remainingAmount)}
+                          </div>
+                          {budget.allocatedAmount > 0 && (
+                            <div className="w-24 bg-gray-200 rounded-full h-1.5 mt-1">
+                              <div
+                                className={`h-1.5 rounded-full ${
+                                  ((budget.calculatedSpent ?? budget.spentAmount) / budget.allocatedAmount) > 0.9
+                                    ? "bg-red-500"
+                                    : ((budget.calculatedSpent ?? budget.spentAmount) / budget.allocatedAmount) > 0.7
+                                    ? "bg-orange-500"
+                                    : "bg-green-500"
+                                }`}
+                                style={{
+                                  width: `${Math.min(
+                                    ((budget.calculatedSpent ?? budget.spentAmount) / budget.allocatedAmount) * 100,
+                                    100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(member.joinedAt).toLocaleDateString()}

@@ -4,6 +4,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { internal } from "./_generated/api";
 import { ensureCompanyAdmin } from "./util/rbac";
 import { logAudit } from "./util/audit";
+import { api } from "./_generated/api";
 
 export const getPendingApprovals = query({
   args: {
@@ -72,6 +73,13 @@ export const approveOrder = mutation({
       approvedAt: Date.now(),
       notes: args.notes,
     });
+
+    // Deduct budget if order is paid from company budget
+    if (order.paymentSource === "company_budget" && order.employeeBudgetId) {
+      await ctx.runMutation(api.budgets.deductBudget, {
+        orderId: args.orderId,
+      });
+    }
 
     // Create notification for employee
     await ctx.db.insert("notifications", {
@@ -180,6 +188,13 @@ export const bulkApproveOrders = mutation({
         approvedAt: Date.now(),
         notes: args.notes,
       });
+
+      // Deduct budget if order is paid from company budget
+      if (order.paymentSource === "company_budget" && order.employeeBudgetId) {
+        await ctx.runMutation(api.budgets.deductBudget, {
+          orderId,
+        });
+      }
 
       // Create notification
       await ctx.db.insert("notifications", {

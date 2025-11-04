@@ -73,10 +73,21 @@ export function MyOrders({ orders }: MyOrdersProps) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">${order.totalPrice}</p>
-                  <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(order.status)}`}>
-                    {order.status.replace("_", " ")}
-                  </span>
+                  <p className="text-2xl font-bold text-gray-900">${order.totalAmount || order.totalPrice}</p>
+                  <div className="flex flex-col items-end space-y-1 mt-2">
+                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(order.status)}`}>
+                      {order.status.replace("_", " ")}
+                    </span>
+                    {order.paymentSource && (
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        order.paymentSource === "company_budget"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}>
+                        {order.paymentSource === "company_budget" ? "💰 Company Budget" : "💳 Personal Payment"}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 

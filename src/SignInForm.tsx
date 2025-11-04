@@ -1,13 +1,11 @@
 "use client";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useState } from "react";
 import { toast } from "sonner";
 
 export function SignInForm() {
   const { signIn } = useAuthActions();
-  const sendVerification = useAction(api.verification.sendVerificationEmail);
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const [submitting, setSubmitting] = useState(false);
 
@@ -21,14 +19,12 @@ export function SignInForm() {
           const formData = new FormData(e.target as HTMLFormElement);
           formData.set("flow", flow);
           void signIn("password", formData).then(async () => {
+            // Defer verification email until after auth is fully established.
+            // Flag for App to send email post-auth to avoid race conditions.
             if (flow === "signUp") {
               try {
-                await sendVerification({});
-                toast.success("Verification email sent. Please check your inbox.");
-              } catch (e) {
-                console.error(e);
-                toast.error("Signed up, but failed to send verification email.");
-              }
+                sessionStorage.setItem("postSignUpSendVerify", "1");
+              } catch {}
             }
           }).catch((error) => {
             let toastTitle = "";
@@ -41,6 +37,10 @@ export function SignInForm() {
                   : "Could not sign up, did you mean to sign in?";
             }
             toast.error(toastTitle);
+            setSubmitting(false);
+          }).finally(() => {
+            // Re-enable the button in case the form remains visible
+            // (e.g., during session refresh or if sign-in doesn't switch views immediately).
             setSubmitting(false);
           });
         }}
