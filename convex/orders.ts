@@ -3,10 +3,12 @@ import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { logAudit } from "./util/audit";
 import { ensureCompanyMember, ensureCompanyAdmin, ensureVendorForCompany } from "./util/rbac";
+import { api } from "./_generated/api";
 
 export const createOrderFromCart = mutation({
   args: {
     companyId: v.id("companies"),
+    paymentType: v.union(v.literal("company_budget"), v.literal("personal_payment")),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -27,7 +29,7 @@ export const createOrderFromCart = mutation({
       throw new Error("Cart is empty");
     }
 
-    await ensureCompanyMember(ctx, String(args.companyId));
+    const { membership } = await ensureCompanyMember(ctx, String(args.companyId));
 
     // Calculate total and prepare order items
     let totalAmount = 0;
@@ -61,6 +63,30 @@ export const createOrderFromCart = mutation({
       });
     }
 
+    // Validate budget if using company budget
+    let budgetPeriodId: any = undefined;
+    let employeeBudgetId: any = undefined;
+
+    if (args.paymentType === "company_budget") {
+      const budgetCheck = await ctx.runQuery(api.budgets.checkBudgetAvailability, {
+        companyId: args.companyId,
+        amount: totalAmount,
+      });
+
+      if (!budgetCheck.available) {
+        throw new Error(budgetCheck.reason || "Insufficient budget");
+      }
+
+      // Get current employee budget to get the period ID
+      const employeeBudget = await ctx.runQuery(api.budgets.getEmployeeBudget, {});
+      if (!employeeBudget) {
+        throw new Error("No active budget found");
+      }
+
+      budgetPeriodId = employeeBudget.budgetPeriodId;
+      employeeBudgetId = employeeBudget._id;
+    }
+
     const orderNumber = `ORD-${Date.now()}`;
     const status = "pending_approval";
 
@@ -74,6 +100,9 @@ export const createOrderFromCart = mutation({
       status,
       orderDate: Date.now(),
       notes: args.notes,
+      paymentType: args.paymentType,
+      budgetPeriodId,
+      paymentStatus: args.paymentType === "personal_payment" ? "pending" : undefined,
     });
 
     await logAudit(ctx, {
@@ -81,7 +110,12 @@ export const createOrderFromCart = mutation({
       entityType: "order",
       entityId: String(orderId),
       companyId: String(args.companyId),
-      newValues: { orderNumber, totalAmount, items: orderItems.length },
+      newValues: { 
+        orderNumber, 
+        totalAmount, 
+        items: orderItems.length,
+        paymentType: args.paymentType,
+      },
     });
 
     // Clear the cart
@@ -333,6 +367,41 @@ export const getUserOrderStats = query({
       orderLimit: membership.orderLimit,
       remainingLimit,
       orders: orders.length,
+    };
+  },
+});
+
+export const getOrderPaymentStatus = query({
+  args: {
+    orderId: v.id("orders"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const order = await ctx.db.get(args.orderId);
+    if (!order) {
+      throw new Error("Order not found");
+    }
+
+    // Verify user owns this order or is admin
+    const membership = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company_and_user", (q) => 
+        q.eq("companyId", order.companyId).eq("userId", userId)
+      )
+      .first();
+
+    if (String(order.userId) !== String(userId) && (!membership || membership.role !== "companyAdmin")) {
+      throw new Error("Not authorized");
+    }
+
+    return {
+      paymentType: order.paymentType,
+      paymentStatus: order.paymentStatus,
+      paymentTransactionId: order.paymentTransactionId,
     };
   },
 });

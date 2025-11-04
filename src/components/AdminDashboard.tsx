@@ -6,6 +6,7 @@ import { ShirtManagement } from "./admin/ShirtManagement";
 import { TeamManagement } from "./admin/TeamManagement";
 import { OrderManagement } from "./admin/OrderManagement";
 import { VendorManagement } from "./admin/VendorManagement";
+import { BudgetManagement } from "./admin/BudgetManagement";
 
 interface AdminDashboardProps {
   company: {
@@ -29,6 +30,7 @@ export function AdminDashboard({ company, activeTab, setActiveTab }: AdminDashbo
     { id: "team", label: "Team", icon: "👥" },
     { id: "orders", label: "Orders", icon: "📦" },
     { id: "vendors", label: "Vendors", icon: "🏢" },
+    { id: "budgets", label: "Budgets", icon: "💰" },
   ];
 
   return (
@@ -81,6 +83,9 @@ export function AdminDashboard({ company, activeTab, setActiveTab }: AdminDashbo
           )}
           {activeTab === "vendors" && (
             <VendorManagement companyId={company._id as Id<"companies">} />
+          )}
+          {activeTab === "budgets" && (
+            <BudgetManagement companyId={company._id as Id<"companies">} />
           )}
         </div>
       </div>

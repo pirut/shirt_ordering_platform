@@ -30,6 +30,7 @@ const applicationTables = {
     department: v.optional(v.string()),
     joinedAt: v.number(),
     isActive: v.boolean(),
+    budgetAllocationEnabled: v.optional(v.boolean()),
   })
     .index("by_company", ["companyId"])
     .index("by_user", ["userId"])
@@ -152,6 +153,10 @@ const applicationTables = {
     trackingNumber: v.optional(v.string()),
     carrier: v.optional(v.string()),
     estimatedDelivery: v.optional(v.number()),
+    paymentType: v.optional(v.union(v.literal("company_budget"), v.literal("personal_payment"))),
+    budgetPeriodId: v.optional(v.id("budgetPeriods")),
+    paymentStatus: v.optional(v.union(v.literal("pending"), v.literal("completed"), v.literal("failed"))),
+    paymentTransactionId: v.optional(v.string()),
   })
     .index("by_company", ["companyId"])
     .index("by_user", ["userId"])
@@ -328,6 +333,51 @@ const applicationTables = {
     createdAt: v.number(),
     isActive: v.boolean(),
   }).index("by_user", ["userId"]),
+
+  // Budget Periods
+  budgetPeriods: defineTable({
+    companyId: v.id("companies"),
+    periodType: v.union(v.literal("quarterly"), v.literal("yearly"), v.literal("monthly")),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    budgetAmount: v.number(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_company_and_period", ["companyId", "periodStart", "periodEnd"]),
+
+  // Company Budgets (aggregated budget tracking)
+  companyBudgets: defineTable({
+    companyId: v.id("companies"),
+    budgetPeriodId: v.id("budgetPeriods"),
+    periodType: v.union(v.literal("quarterly"), v.literal("yearly"), v.literal("monthly")),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    totalBudget: v.number(),
+    spentAmount: v.number(),
+    status: v.union(v.literal("active"), v.literal("completed"), v.literal("cancelled")),
+    createdAt: v.number(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_company_and_period", ["companyId", "periodStart", "periodEnd"])
+    .index("by_period", ["budgetPeriodId"]),
+
+  // Employee Budgets (individual allocations)
+  employeeBudgets: defineTable({
+    companyMemberId: v.id("companyMembers"),
+    budgetPeriodId: v.id("budgetPeriods"),
+    companyBudgetId: v.id("companyBudgets"),
+    allocatedAmount: v.number(),
+    spentAmount: v.number(),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_member", ["companyMemberId"])
+    .index("by_period", ["budgetPeriodId"])
+    .index("by_company_budget", ["companyBudgetId"])
+    .index("by_member_and_period", ["companyMemberId", "periodStart", "periodEnd"]),
 };
 
 export default defineSchema({

@@ -1,3 +1,6 @@
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+
 interface EmployeeOverviewProps {
   company: {
     _id?: string;
@@ -15,6 +18,7 @@ interface EmployeeOverviewProps {
 }
 
 export function EmployeeOverview({ company, orders, orderStats }: EmployeeOverviewProps) {
+  const employeeBudget = useQuery(api.budgets.getEmployeeBudget, {});
   const recentOrders = orders.slice(0, 3);
   const pendingOrders = orders.filter(order => order.status === "pending").length;
   const completedOrders = orders.filter(order => order.status === "completed").length;
@@ -69,6 +73,77 @@ export function EmployeeOverview({ company, orders, orderStats }: EmployeeOvervi
           </div>
         ))}
       </div>
+
+      {/* Budget Status */}
+      {employeeBudget && (
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Budget Status</h2>
+            <span className="text-sm text-gray-500">
+              {employeeBudget.budgetPeriod?.periodType && (
+                <>Current {employeeBudget.budgetPeriod.periodType} period</>
+              )}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-gray-600">Allocated</p>
+              <p className="text-lg font-semibold text-gray-900">
+                ${employeeBudget.allocatedAmount.toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Spent</p>
+              <p className="text-lg font-semibold text-gray-900">
+                ${employeeBudget.spentAmount.toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Remaining</p>
+              <p className={`text-lg font-semibold ${
+                employeeBudget.remainingAmount < 0 
+                  ? "text-red-600" 
+                  : employeeBudget.remainingAmount < employeeBudget.allocatedAmount * 0.2
+                  ? "text-yellow-600"
+                  : "text-green-600"
+              }`}>
+                ${employeeBudget.remainingAmount.toFixed(2)}
+              </p>
+            </div>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div
+              className={`h-3 rounded-full transition-all duration-300 ${
+                employeeBudget.remainingAmount < 0 
+                  ? "bg-red-500" 
+                  : employeeBudget.remainingAmount < employeeBudget.allocatedAmount * 0.2
+                  ? "bg-yellow-500"
+                  : "bg-green-500"
+              }`}
+              style={{
+                width: `${Math.min(
+                  (employeeBudget.spentAmount / employeeBudget.allocatedAmount) * 100,
+                  100
+                )}%`
+              }}
+            ></div>
+          </div>
+          {employeeBudget.remainingAmount < employeeBudget.allocatedAmount * 0.2 && employeeBudget.remainingAmount >= 0 && (
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Low budget warning: You have less than 20% of your budget remaining.
+              </p>
+            </div>
+          )}
+          {employeeBudget.remainingAmount < 0 && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-800">
+                ❌ Budget exceeded: You have exceeded your allocated budget.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Order Limit Progress */}
       {orderStats && (

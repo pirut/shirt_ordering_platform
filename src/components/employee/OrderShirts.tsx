@@ -20,9 +20,11 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
+  const [paymentType, setPaymentType] = useState<"company_budget" | "personal_payment">("company_budget");
   const [isLoading, setIsLoading] = useState(false);
 
   const shirts = useQuery(api.shirts.getCompanyShirts, { companyId });
+  const employeeBudget = useQuery(api.budgets.getEmployeeBudget, {});
   const addToCart = useMutation(api.cart.addToCart);
   const createOrder = useMutation(api.orders.createOrderFromCart);
 
@@ -62,6 +64,7 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
       // Then create order from cart
       await createOrder({
         companyId,
+        paymentType,
         notes: notes || undefined,
       });
       toast.success("Order placed successfully!");
@@ -211,6 +214,53 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Method *
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="paymentType"
+                      value="company_budget"
+                      checked={paymentType === "company_budget"}
+                      onChange={(e) => setPaymentType(e.target.value as any)}
+                      className="mr-3"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium text-gray-900">Use Company Budget</span>
+                      {employeeBudget && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Remaining: ${employeeBudget.remainingAmount.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="paymentType"
+                      value="personal_payment"
+                      checked={paymentType === "personal_payment"}
+                      onChange={(e) => setPaymentType(e.target.value as any)}
+                      className="mr-3"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium text-gray-900">Pay with Personal Payment</span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        You will be charged ${totalPrice.toFixed(2)}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+                {paymentType === "company_budget" && employeeBudget && totalPrice > employeeBudget.remainingAmount && (
+                  <p className="text-red-600 text-sm mt-2">
+                    ⚠️ Order exceeds remaining budget. Consider using personal payment.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Notes (Optional)
                 </label>
                 <textarea
@@ -224,10 +274,18 @@ export function OrderShirts({ companyId, orderStats }: OrderShirtsProps) {
 
               {totalPrice > 0 && (
                 <div className="p-4 bg-gray-50 rounded-lg">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center mb-2">
                     <span className="font-medium text-gray-900">Total Price:</span>
-                    <span className="text-xl font-bold text-green-600">${totalPrice}</span>
+                    <span className="text-xl font-bold text-green-600">${totalPrice.toFixed(2)}</span>
                   </div>
+                  {paymentType === "company_budget" && employeeBudget && (
+                    <div className="text-sm text-gray-600">
+                      <p>Budget Remaining: ${employeeBudget.remainingAmount.toFixed(2)}</p>
+                      <p className="mt-1">
+                        After Order: ${(employeeBudget.remainingAmount - totalPrice).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -1,4 +1,4 @@
-import { Authenticated, Unauthenticated, useMutation, useQuery } from "convex/react";
+import { Authenticated, Unauthenticated, useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useEffect } from "react";
 import { toast } from "sonner";
@@ -48,6 +48,33 @@ export default function App() {
 function Content() {
   const loggedInUser = useQuery(api.auth.loggedInUser);
   const userCompany = useQuery(api.companies.getUserCompany);
+  const sendVerification = useAction(api.verification.sendVerificationEmail);
+
+  // After a successful sign up, send verification email once auth is established.
+  // This avoids calling the action before the auth state is available server-side.
+  useEffect(() => {
+    if (!loggedInUser) return;
+    let flagged = false;
+    try {
+      flagged = sessionStorage.getItem("postSignUpSendVerify") === "1";
+    } catch {
+      flagged = false;
+    }
+    if (!flagged) return;
+    (async () => {
+      try {
+        await sendVerification({});
+        toast.success("Verification email sent. Please check your inbox.");
+      } catch (e) {
+        console.error(e);
+        toast.error("Signed up, but failed to send verification email.");
+      } finally {
+        try {
+          sessionStorage.removeItem("postSignUpSendVerify");
+        } catch {}
+      }
+    })();
+  }, [loggedInUser, sendVerification]);
 
   if (loggedInUser === undefined || userCompany === undefined) {
     return (

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { internal } from "./_generated/api";
+import { internal, api } from "./_generated/api";
 import { ensureCompanyAdmin } from "./util/rbac";
 import { logAudit } from "./util/audit";
 
@@ -72,6 +72,40 @@ export const approveOrder = mutation({
       approvedAt: Date.now(),
       notes: args.notes,
     });
+
+    // Deduct from budget if using company budget
+    if (order.paymentType === "company_budget" && order.budgetPeriodId) {
+      // Get employee budget for this period
+      const membership = await ctx.db
+        .query("companyMembers")
+        .withIndex("by_company_and_user", (q) =>
+          q.eq("companyId", order.companyId).eq("userId", order.userId)
+        )
+        .first();
+
+      if (membership) {
+        const budgetPeriod = await ctx.db.get(order.budgetPeriodId);
+        if (budgetPeriod) {
+          const employeeBudget = await ctx.db
+            .query("employeeBudgets")
+            .withIndex("by_member_and_period", (q) =>
+              q
+                .eq("companyMemberId", membership._id)
+                .eq("periodStart", budgetPeriod.periodStart)
+                .eq("periodEnd", budgetPeriod.periodEnd)
+            )
+            .first();
+
+          if (employeeBudget) {
+            await ctx.runMutation(api.budgets.deductBudget, {
+              employeeBudgetId: employeeBudget._id,
+              amount: order.totalAmount,
+              orderId: args.orderId,
+            });
+          }
+        }
+      }
+    }
 
     // Create notification for employee
     await ctx.db.insert("notifications", {

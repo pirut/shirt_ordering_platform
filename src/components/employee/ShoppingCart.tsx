@@ -11,8 +11,10 @@ interface ShoppingCartProps {
 
 export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [paymentType, setPaymentType] = useState<"company_budget" | "personal_payment">("company_budget");
   
   const cartItems = useQuery(api.cart.getCartItems);
+  const employeeBudget = useQuery(api.budgets.getEmployeeBudget, {});
   const updateCartItem = useMutation(api.cart.updateCartItem);
   const removeFromCart = useMutation(api.cart.removeFromCart);
   const createOrder = useMutation(api.orders.createOrderFromCart);
@@ -46,6 +48,7 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
     try {
       const orderId = await createOrder({
         companyId,
+        paymentType,
         notes: "Order placed from shopping cart",
       });
       
@@ -147,10 +150,65 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
 
         {cartItems.length > 0 && (
           <div className="border-t p-6">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Payment Method *
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="paymentType"
+                    value="company_budget"
+                    checked={paymentType === "company_budget"}
+                    onChange={(e) => setPaymentType(e.target.value as any)}
+                    className="mr-3"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium text-gray-900">Use Company Budget</span>
+                    {employeeBudget && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Remaining: ${employeeBudget.remainingAmount.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                </label>
+                <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="paymentType"
+                    value="personal_payment"
+                    checked={paymentType === "personal_payment"}
+                    onChange={(e) => setPaymentType(e.target.value as any)}
+                    className="mr-3"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium text-gray-900">Pay with Personal Payment</span>
+                    <p className="text-xs text-gray-500 mt-1">
+                      You will be charged ${totalAmount.toFixed(2)}
+                    </p>
+                  </div>
+                </label>
+              </div>
+              {paymentType === "company_budget" && employeeBudget && totalAmount > employeeBudget.remainingAmount && (
+                <p className="text-red-600 text-sm mt-2">
+                  ⚠️ Order exceeds remaining budget. Consider using personal payment.
+                </p>
+              )}
+            </div>
+
             <div className="flex justify-between items-center mb-4">
               <span className="text-lg font-semibold text-gray-900">Total:</span>
               <span className="text-xl font-bold text-blue-600">${totalAmount.toFixed(2)}</span>
             </div>
+            {paymentType === "company_budget" && employeeBudget && (
+              <div className="mb-4 text-sm text-gray-600">
+                <p>Budget Remaining: ${employeeBudget.remainingAmount.toFixed(2)}</p>
+                <p className="mt-1">
+                  After Order: ${(employeeBudget.remainingAmount - totalAmount).toFixed(2)}
+                </p>
+              </div>
+            )}
             
             <div className="flex space-x-3">
               <button
@@ -161,7 +219,7 @@ export function ShoppingCart({ companyId, onClose }: ShoppingCartProps) {
               </button>
               <button
                 onClick={handleCheckout}
-                disabled={isCheckingOut}
+                disabled={isCheckingOut || (paymentType === "company_budget" && employeeBudget && totalAmount > employeeBudget.remainingAmount)}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {isCheckingOut ? "Placing Order..." : "Place Order"}
